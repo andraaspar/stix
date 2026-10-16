@@ -1,0 +1,1171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>C64 Stix (1983, Supersoft) — Reverse-Engineered Movement &amp; Fill Algorithms</title>
+  <style>
+    :root {
+      --bg: #0f111a;
+      --surface: #181b28;
+      --surface-alt: #1f2335;
+      --border: #2e344e;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-2: #a78bfa;
+      --green: #4ade80;
+      --amber: #fbbf24;
+      --red: #f87171;
+      --code-bg: #11131f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 2rem 1.25rem 4rem;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.65;
+    }
+    .container {
+      max-width: 1040px;
+      margin: 0 auto;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    h1 {
+      font-size: 2rem;
+      margin: 0 0 0.5rem;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 1.05rem;
+      margin: 0;
+    }
+    h2 {
+      font-size: 1.4rem;
+      color: var(--accent);
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 {
+      font-size: 1.15rem;
+      color: var(--accent-2);
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    p, li {
+      color: var(--text);
+    }
+    ul, ol {
+      padding-left: 1.4rem;
+    }
+    li {
+      margin-bottom: 0.4rem;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: var(--surface-alt);
+      color: #7dd3fc;
+      padding: 0.15rem 0.38rem;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    pre code {
+      background: transparent;
+      padding: 0;
+      color: var(--text);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.9rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--surface-alt);
+      color: #fff;
+      font-weight: 600;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin: 1.25rem 0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-mode0 { background: rgba(74, 222, 128, 0.15); color: var(--green); border: 1px solid rgba(74, 222, 128, 0.35); }
+    .badge-mode1 { background: rgba(248, 113, 113, 0.15); color: var(--red); border: 1px solid rgba(248, 113, 113, 0.35); }
+    .demo-layout {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 720px) {
+      .demo-layout { grid-template-columns: 1fr; }
+    }
+    canvas {
+      background: #000;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      image-rendering: pixelated;
+      width: 320px;
+      height: 400px;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+    button {
+      background: var(--surface-alt);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.45rem 0.85rem;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 500;
+    }
+    button:hover {
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.6rem;
+      margin-top: 0.75rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85rem;
+    }
+    .stat-box {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+    }
+    .stat-label { color: var(--muted); font-size: 0.75rem; display: block; }
+    .flow-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+    }
+    .flow-step {
+      background: var(--code-bg);
+      border-left: 3px solid var(--accent);
+      padding: 0.6rem 0.9rem;
+      border-radius: 0 6px 6px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Commodore 64 <em>Stix</em> (Supersoft, 1983) — Algorithm Reference</h1>
+      <p class="subtitle">
+        Reverse-engineered directly from <code>Stix.d64</code> (<code>STIX+5 /REM</code>, unpacked 6502 game engine at <code>$6000–$7649</code>)
+      </p>
+    </header>
+
+    <!-- LIVE INTERACTIVE SIMULATION -->
+    <div class="card">
+      <h3 style="margin-top: 0;">Interactive C64 Stix Movement &amp; Clipping Simulator</h3>
+      <p style="margin-top: 0.25rem; font-size: 0.92rem; color: var(--muted);">
+        Runs the exact disassembled 6502 algorithm at <code>160×200</code> resolution: 8-segment ring buffer, Mode 0 independent endpoint random walk, Mode 1 converging Bresenham swoop, and self-shortening wall clipping. Click and drag inside the canvas to add test walls.
+      </p>
+      <div class="demo-layout">
+        <div>
+          <canvas id="stixCanvas" width="160" height="200"></canvas>
+          <div class="controls">
+            <button id="btnForceSwoop">Trigger Mode 1 Swoop</button>
+            <button id="btnAddBox">Add Inner Box Wall</button>
+            <button id="btnReset">Reset Playfield</button>
+          </div>
+        </div>
+        <div>
+          <div id="modeBadge" class="badge badge-mode0">Mode 0: Random Endpoint Walk</div>
+          <div class="stat-grid">
+            <div class="stat-box">
+              <span class="stat-label">Endpoint 1 ($4B12, $4B14)</span>
+              <span id="statEp1">X1: 120, Y1: 150</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Endpoint 2 ($4B13, $4B15)</span>
+              <span id="statEp2">X2: 130, Y2: 150</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Ring Buffer Index ($4B16)</span>
+              <span id="statRing">0 / 7</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Swoop Target ($4B18, $4B19)</span>
+              <span id="statTarget">—</span>
+            </div>
+          </div>
+          <div class="flow-diagram" style="margin-top: 1rem;">
+            <div class="flow-step">
+              <strong>Mode 0 (93.75% chance/tick):</strong> Each of <code>Y2, Y1, X2, X1</code> independently steps <code>1..8</code> pixels in a random direction (<code>±1</code>), stopping immediately if that endpoint touches a wall.
+            </div>
+            <div class="flow-step">
+              <strong>Mode 1 (6.25% chance/tick):</strong> Picks a random target <code>(TX, TY)</code> and precomputes Bresenham paths from both endpoints to <code>(TX, TY)</code>. Both endpoints march toward the same point at <code>2, 4, or 6</code> px/tick, causing the Stix to contract into a tight bundle as it swoops.
+            </div>
+            <div class="flow-step">
+              <strong>Wall Clipping &amp; Endpoint Snap:</strong> When rasterizing the line from <code>(X1,Y1)</code> to <code>(X2,Y2)</code>, if any pixel hits a wall, drawing stops immediately and <code>(X2,Y2)</code> snaps to the last valid pixel before the wall.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 1 -->
+    <h2>1. Binary Layout &amp; Dual-Bitmap Architecture</h2>
+    <p>
+      The file <code>STIX+5 /REM</code> on <code>Stix.d64</code> is packed with two sequential decrunchers (starting at <code>$080B</code> and <code>$0801</code>), followed by a crack intro at <code>$0C40</code> and a 5-option trainer at <code>$22C8</code>. The trainer jumps to <code>$7600</code>, which initializes memory and enters the main game engine at <code>$6000</code>.
+    </p>
+    <ul>
+      <li><strong>Graphics Mode:</strong> C64 Multicolor Bitmap Mode (<code>160 × 200</code> logical pixels, 4 pixels per byte at 2 bits per pixel).</li>
+      <li><strong>Visible Bitmap (<code>$2000–$3FFF</code>):</strong> Rendered by the VIC-II chip. Row base addresses are looked up via the table at <code>$6F1B</code>.</li>
+      <li><strong>Shadow Bitmap (<code>$A000–$BFFF</code>):</strong> Accessed by setting bit 7 of the bitmap pointer high byte (<code>LDA $46; ORA #$80; STA $46</code> at <code>$697F</code>). It stores 2-bit collision tags so visual colors and collision states stay decoupled.</li>
+    </ul>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Pixel State</th>
+          <th>Visible Bitmap (<code>$2000</code>)</th>
+          <th>Shadow Bitmap (<code>$A000</code>)</th>
+          <th>Bitmask Table Used (<code>X = x &amp; 3</code>)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Empty Space</strong></td>
+          <td><code>00</code></td>
+          <td><code>00</code></td>
+          <td>Cleared with <code>AND $75D9,X</code> (<code>$3F, $CF, $F3, $FC</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Stix Trail Segment</strong></td>
+          <td><code>01</code></td>
+          <td><code>01</code></td>
+          <td>Set with <code>ORA $757D,X</code> (<code>$40, $10, $04, $01</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Active Player Trail (Incomplete)</strong></td>
+          <td><code>11</code></td>
+          <td><code>10</code></td>
+          <td>Visible: <code>$75D1,X</code> (<code>11</code>); Shadow: <code>$7579,X</code> (<code>$80, $20, $08, $02</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Completed Boundary / Wall</strong></td>
+          <td><code>11</code></td>
+          <td><code>11</code></td>
+          <td>Set with <code>ORA $75D1,X</code> (<code>$C0, $30, $0C, $03</code>)</td>
+        </tr>
+        <tr>
+          <td><strong>Captured / Flood-Filled Area</strong></td>
+          <td><code>10</code> (fast) or <code>01</code> (slow)</td>
+          <td><code>00</code></td>
+          <td>Visible set with <code>$7579,X</code> or <code>$757D,X</code>; Shadow cleared to <code>00</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>
+      <strong>Why clearing the Shadow Bitmap on flood-fill matters:</strong> When erasing the oldest Stix segment (8 ticks later), routine <code>$6928</code> checks if <code>Shadow == 01</code>. If the player captured that region in the meantime, <code>Shadow</code> was cleared to <code>00</code> during flood-fill, preventing the Stix's tail eraser from punching holes in newly captured territory.
+    </p>
+
+    <!-- SECTION 2 -->
+    <h2>2. Stix State Variables &amp; Memory Map</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Address</th>
+          <th>Name / Role</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>$4B12</code></td>
+          <td><code>stixX1</code></td>
+          <td>Endpoint 1 X coordinate (initialized to <code>$78</code> = 120; valid range <code>4..155</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B13</code></td>
+          <td><code>stixX2</code></td>
+          <td>Endpoint 2 X coordinate (initialized to <code>$82</code> = 130; valid range <code>4..155</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B14</code></td>
+          <td><code>stixY1</code></td>
+          <td>Endpoint 1 Y coordinate (initialized to <code>$96</code> = 150; valid range <code>17..195</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B15</code></td>
+          <td><code>stixY2</code></td>
+          <td>Endpoint 2 Y coordinate (initialized to <code>$96</code> = 150; valid range <code>17..195</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B16</code></td>
+          <td><code>ringIndex</code></td>
+          <td>Current slot in the 8-segment history buffer (<code>0..7</code>, wraps with <code>AND #$07</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B24</code></td>
+          <td><code>movementMode</code></td>
+          <td><code>0</code> = Random Endpoint Walk (Mode 0); <code>1</code> = Targeted Swoop (Mode 1)</td>
+        </tr>
+        <tr>
+          <td><code>$4B27</code></td>
+          <td><code>swoopSpeed</code></td>
+          <td>Steps per tick along precomputed swoop path (<code>$D41B &amp; 6</code> &rarr; <code>0, 2, 4, or 6</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B28</code></td>
+          <td><code>swoopIndex</code></td>
+          <td>Current index along precomputed swoop trajectory buffers (<code>$4000–$43FF</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4B2C</code></td>
+          <td><code>speedReload</code></td>
+          <td>Main-loop delay prescaler for Stix ticks (starts at <code>3</code>, decrements each level down to <code>1</code>)</td>
+        </tr>
+        <tr>
+          <td><code>$4000 / $4200</code></td>
+          <td><code>swoopPath1X / Y</code></td>
+          <td>Precomputed Bresenham path from <code>(X1, Y1)</code> to target <code>(TX, TY)</code> in Mode 1</td>
+        </tr>
+        <tr>
+          <td><code>$4100 / $4300</code></td>
+          <td><code>swoopPath2X / Y</code></td>
+          <td>Precomputed Bresenham path from <code>(X2, Y2)</code> to target <code>(TX, TY)</code> in Mode 1</td>
+        </tr>
+        <tr>
+          <td><code>$4600 / $4700</code></td>
+          <td><code>candidateLineX / Y</code></td>
+          <td>Scratch buffer holding rasterized pixels of the current line <code>(X1,Y1)&ndash;(X2,Y2)</code></td>
+        </tr>
+        <tr>
+          <td><code>$C000–$C7FF</code></td>
+          <td><code>trailHistoryX[0..7]</code></td>
+          <td>8 pages storing the drawn X coordinates of the last 8 Stix segments (0-terminated)</td>
+        </tr>
+        <tr>
+          <td><code>$C800–$CFFF</code></td>
+          <td><code>trailHistoryY[0..7]</code></td>
+          <td>8 pages storing the drawn Y coordinates of the last 8 Stix segments</td>
+        </tr>
+        <tr>
+          <td><code>$D41B</code></td>
+          <td><code>SID_OSC3</code></td>
+          <td>Hardware random number generator (SID Voice 3 set to noise waveform <code>$80</code>, freq <code>$7F7F</code>)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- SECTION 3 -->
+    <h2>3. Detailed Stix Movement Algorithm (<code>$6703</code>)</h2>
+    <p>
+      Every Stix update calls <code>JSR $6703</code>. Unlike arcade <em>Qix</em> (which reflects velocity vectors off walls), Supersoft's <em>Stix</em> uses two alternating behaviors driven by random bytes from <code>$D41B</code>:
+    </p>
+
+    <h3>3.1. Mode 0: Independent Endpoint Random Walk (<code>$6781–$6801</code>)</h3>
+    <p>
+      When <code>$4B24 == 0</code> and the random roll <code>$D41B &lt; $F0</code> (93.75% probability), the engine updates the 4 endpoint coordinates <code>(X1, X2, Y1, Y2)</code> stored at <code>$4B12..$4B15</code> one coordinate at a time in reverse order (<code>index = 3, 2, 1, 0</code> &rarr; <code>Y2, Y1, X2, X1</code>):
+    </p>
+    <ol>
+      <li>Read a random byte <code>R = $D41B</code> (stored in <code>$4B19</code>).</li>
+      <li>Compute the number of 1-pixel sub-steps: <code>steps = (R &amp; 7) + 1</code> (between 1 and 8 pixels).</li>
+      <li>Determine the sign from bit 7 of <code>R</code>:
+        <ul>
+          <li>If <code>R &lt; 128</code> (bit 7 = 0): step direction is <code>+1</code>. Upper limit is <code>$75E1,X</code> (<code>155</code> for X, <code>195</code> for Y; must stay strictly less than this value, i.e., <code>&le; 154</code> for X and <code>&le; 194</code> for Y).</li>
+          <li>If <code>R &ge; 128</code> (bit 7 = 1): step direction is <code>-1</code>. Lower limit is <code>$75DD,X</code> (<code>&ge; 4</code> for X, <code>&ge; 17</code> for Y).</li>
+        </ul>
+      </li>
+      <li>For each 1-pixel increment/decrement of coordinate <code>index</code>:
+        <ul>
+          <li>Identify which endpoint was modified via <code>ep = index &amp; 1</code> (Endpoint 1 <code>(X1, Y1)</code> for <code>index = 0, 2</code>; Endpoint 2 <code>(X2, Y2)</code> for <code>index = 1, 3</code>).</li>
+          <li>Inspect the pixel at <code>(X_ep, Y_ep)</code>:
+            <ul>
+              <li>If <code>Visible == 00</code> (empty) or <code>Shadow == 01</code> (Stix's own trail): allow step and continue the sub-step loop.</li>
+              <li>If <code>Shadow == 10</code> (player's incomplete force field): set <code>$4B42 = 1</code> (lethal collision flag) and continue.</li>
+              <li>Otherwise (hit a completed wall <code>Shadow == 11</code> or captured territory <code>Visible != 00, Shadow == 00</code>): <strong>revert the 1-pixel step</strong> and immediately break out of the sub-step loop for this coordinate.</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ol>
+
+    <h3>3.2. Mode 1: Targeted Swoop / Converging Charge (<code>$670D–$6778</code> &amp; <code>$6804–$6861</code>)</h3>
+    <p>
+      When <code>$4B24 == 0</code> and <code>$D41B &ge; $F0</code> (6.25% probability), the Stix initiates a high-speed swoop toward a single random point <code>(TX, TY)</code>:
+    </p>
+    <ol>
+      <li><strong>Select random target <code>(TX, TY)</code>:</strong>
+        <ul>
+          <li>Read <code>Rx = $D41B</code>. If <code>Rx &ge; 152</code> (<code>$98</code>), abort Mode 1 and fall back to Mode 0. Otherwise <code>TX = Rx + 4</code> (range <code>4..155</code>).</li>
+          <li>Read <code>Ry = $D41B ^ frameCounter</code> (<code>$4B25</code>). If <code>Ry &ge; 179</code> (<code>$B3</code>), abort Mode 1 and fall back to Mode 0. Otherwise <code>TY = Ry + 17</code> (range <code>17..195</code>).</li>
+        </ul>
+      </li>
+      <li><strong>Precompute converging Bresenham trajectories (<code>$698B</code> &amp; <code>$69CB</code>):</strong>
+        <ul>
+          <li>Generates a Bresenham line from <code>(TX, TY)</code> to <code>(X1, Y1)</code> in <code>$4000 / $4200</code>, then reverses the array in-place so index <code>0</code> is <code>(X1, Y1)</code> and the end is <code>(TX, TY)</code>.</li>
+          <li>Generates a Bresenham line from <code>(TX, TY)</code> to <code>(X2, Y2)</code> in <code>$4100 / $4300</code>, then reverses it in-place so index <code>0</code> is <code>(X2, Y2)</code> and the end is <code>(TX, TY)</code>.</li>
+          <li>Sets <code>swoopIndex = 0</code> (<code>$4B28</code>) and picks <code>swoopSpeed = $D41B &amp; 6</code> (<code>$4B27</code> &rarr; <code>0, 2, 4, or 6</code> steps per tick).</li>
+          <li>Triggers the SID Voice 1 pulse-width swoop sound effect (<code>$6A7C</code>).</li>
+        </ul>
+      </li>
+      <li><strong>Step along trajectories on subsequent ticks (<code>$6804–$6861</code>):</strong>
+        <ul>
+          <li>In a loop of <code>swoopSpeed</code> iterations, increments <code>swoopIndex</code> and checks if either trajectory reached its <code>0</code> terminator or if <code>(swoopPath1X[idx], swoopPath1Y[idx])</code> hits a wall or filled region.</li>
+          <li>If blocked or finished, clears <code>$4B24 = 0</code>, silences SID Voice 1, and jumps back to <code>$6703</code> (Mode 0).</li>
+          <li>Otherwise, sets <code>(X1, Y1)</code> and <code>(X2, Y2)</code> from the trajectory arrays at <code>swoopIndex</code>. Because both paths converge on <code>(TX, TY)</code>, the Stix visually shrinks as it accelerates across the playfield.</li>
+        </ul>
+      </li>
+    </ol>
+
+    <!-- SECTION 4 -->
+    <h2>4. Line Rasterization, Wall Clipping &amp; Endpoint Snapping (<code>$6862–$6927</code>)</h2>
+    <p>
+      After updating <code>(X1, Y1)</code> and <code>(X2, Y2)</code> via Mode 0 or Mode 1, routine <code>$6862</code> rasterizes the line segment and enforces wall containment:
+    </p>
+    <ol>
+      <li><strong>Bresenham Rasterization (<code>JSR $6D8B</code> with <code>$4B0D = 2</code>):</strong> Computes every pixel along the segment from <code>(X1, Y1)</code> to <code>(X2, Y2)</code> and writes the coordinates into scratch buffers <code>$4600</code> (X) and <code>$4700</code> (Y), terminated by <code>0</code>.</li>
+      <li><strong>Erase Oldest Trail Segment (<code>JSR $6928</code>):</strong> Reads slot <code>k = $4B16</code> from <code>$C000+k*$100</code> and <code>$C800+k*$100</code>. For every pixel in that slot, if <code>Shadow(x, y) == 01</code>, both <code>Visible(x, y)</code> and <code>Shadow(x, y)</code> are cleared to <code>00</code>.</li>
+      <li><strong>Plot &amp; Clip Loop (<code>$688D–$68F5</code>):</strong> Walks index <code>X = 0, 1, ...</code> through the candidate line buffer <code>($4600, $4700)</code>:
+        <ul>
+          <li><strong>Empty pixel (<code>Visible == 00</code>):</strong> Sets <code>Visible = 01</code> and <code>Shadow = 01</code>, and appends <code>(x, y)</code> to the current history slot at write index <code>Y</code> (<code>$4B19</code>).</li>
+          <li><strong>Existing Stix pixel (<code>Shadow == 01</code>):</strong> Skips without modifying or recording in the new slot, and continues walking the line.</li>
+          <li><strong>Player's incomplete trail (<code>Shadow == 10</code>):</strong> Sets player death flag <code>$4B2B = 1</code> and continues walking the line.</li>
+          <li><strong>Wall or Filled territory (<code>Shadow == 11</code> or <code>Shadow == 00, Visible != 00</code>):</strong> <strong>Immediately aborts the loop (<code>JMP $68F7</code>)</strong>, clipping the line segment right before the obstacle.</li>
+        </ul>
+      </li>
+      <li><strong>Self-Shortening Endpoint Snap (<code>$68F7–$6914</code>):</strong>
+        <ul>
+          <li>If at least 2 pixels were drawn into the current history slot (<code>Y &ge; 2</code>):
+            <ul>
+              <li><code>(X1, Y1)</code> is overwritten with the <strong>first</strong> drawn pixel in the slot (<code>slot[0]</code>).</li>
+              <li><code>(X2, Y2)</code> is overwritten with the <strong>last</strong> drawn pixel in the slot (<code>slot[Y - 1]</code>).</li>
+            </ul>
+          </li>
+          <li><strong>Crucial consequence:</strong> If the Stix swings across a wall corner so that its midpoint hits the wall even though <code>(X2, Y2)</code> was in open space on the other side, clipping truncates the rasterized line at the wall and snaps <code>(X2, Y2)</code> back to the wall's edge. This prevents the Stix from ever jumping over walls or escaping its enclosure.</li>
+        </ul>
+      </li>
+    </ol>
+
+    <!-- SECTION 5 -->
+    <h2>5. Screen-Splitting &amp; Flood-Fill Algorithm (<code>$6577</code> &amp; <code>$646E</code>)</h2>
+    <p>
+      When the player completes a force field, the game does <strong>not</strong> flood-fill both sides to compare their areas. Instead, it uses a single-pass <strong>Wall-Following Exterior Normal Search (<code>$6577</code>)</strong>:
+    </p>
+    <ol>
+      <li>Starting at the Stix's first endpoint <code>(X1, Y1)</code>, march right (<code>INC $57</code>) until hitting a wall pixel (<code>Shadow == 11</code>). Record this wall pixel as <code>(startX, startY)</code> at <code>($4B33, $4B34)</code>.</li>
+      <li>Because the ray started at the Stix and went right (<code>+X</code>), the Stix's interior is on the left (<code>-X</code>) of this wall, and the exterior of the Stix's enclosure is on the right (<code>+X</code>).</li>
+      <li>Trace clockwise around the inner perimeter of the Stix's enclosing wall using 4 directional states:
+        <ul>
+          <li><strong>Moving Up (<code>$6597</code>):</strong> Exterior normal is Right (<code>+X</code>).</li>
+          <li><strong>Moving Right (<code>$65BC</code>):</strong> Exterior normal is Down (<code>+Y</code>).</li>
+          <li><strong>Moving Down (<code>$65E1</code>):</strong> Exterior normal is Left (<code>-X</code>).</li>
+          <li><strong>Moving Left (<code>$6606</code>):</strong> Exterior normal is Up (<code>-Y</code>).</li>
+        </ul>
+      </li>
+      <li>At each boundary pixel along the walk, peek 1 pixel in the exterior normal direction:
+        <ul>
+          <li>Along the outer frame or previously captured walls, that exterior pixel is already non-zero in the Visible bitmap.</li>
+          <li>Along the <strong>newly drawn 1-pixel-thick force field</strong>, the pixel on the exterior side of the wall is <strong>empty (<code>Visible == 00</code>)</strong>!</li>
+        </ul>
+      </li>
+      <li>As soon as an empty exterior pixel is found, <code>$6577</code> returns <code>A = 0</code> with <code>($57, $58)</code> set to that empty pixel's coordinates. The main loop calls <code>JSR $646E</code> to perform a scanline stack flood-fill from <code>($57, $58)</code>, then calls <code>$6577</code> again until a full circuit of the Stix's boundary finds no remaining empty exterior pockets.</li>
+    </ol>
+
+    <!-- SECTION 6 -->
+    <h2>6. Clean TypeScript Implementation Reference</h2>
+    <pre><code>export const WIDTH = 160;
+export const HEIGHT = 200;
+
+export const enum ShadowState {
+  EmptyOrFilled = 0, // Empty if visible == 0, Filled if visible != 0
+  Stix = 1,          // Stix segment pixel
+  PlayerTrail = 2,   // Incomplete player line
+  Wall = 3,          // Completed wall / border
+}
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export class StixEngine {
+  visible = new Uint8Array(WIDTH * HEIGHT);
+  shadow = new Uint8Array(WIDTH * HEIGHT);
+
+  // $4B12..$4B15: Stix endpoints (X1, X2, Y1, Y2)
+  coords = [120, 130, 150, 150]; // [X1, X2, Y1, Y2]
+  readonly minBounds = [4, 4, 17, 17];
+  readonly maxBounds = [155, 155, 195, 195];
+
+  // $4B16 & $C000..$CFFF: 8-slot ring buffer of rasterized segments
+  ringIndex = 0;
+  trailHistory: Point[][] = Array.from({ length: 8 }, () =&gt; []);
+
+  // $4B24, $4B27, $4B28: Mode 1 (Targeted Swoop) state
+  swoopMode = false;
+  swoopSpeed = 0;
+  swoopIndex = 0;
+  swoopPath1: Point[] = [];
+  swoopPath2: Point[] = [];
+
+  playerHit = false;
+  frameCounter = 0;
+
+  private idx(x: number, y: number): number {
+    return y * WIDTH + x;
+  }
+
+  private randByte(): number {
+    return (Math.random() * 256) | 0;
+  }
+
+  /** Bresenham line generator matching $6D8B */
+  bresenhamLine(x0: number, y0: number, x1: number, y1: number): Point[] {
+    const pts: Point[] = [];
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 &lt; x1 ? 1 : -1;
+    const sy = y0 &lt; y1 ? 1 : -1;
+
+    let x = x0;
+    let y = y0;
+    if (dx &gt;= dy) {
+      let err = (dx - (dy &gt;&gt; 1)) &gt;&gt; 1;
+      for (let i = 0; i &lt;= dx; i++) {
+        pts.push({ x, y });
+        err -= dy;
+        if (err &lt; 0) {
+          err += dx;
+          y += sy;
+        }
+        x += sx;
+      }
+    } else {
+      let err = (dy - (dx &gt;&gt; 1)) &gt;&gt; 1;
+      for (let i = 0; i &lt;= dy; i++) {
+        pts.push({ x, y });
+        err -= dx;
+        if (err &lt; 0) {
+          err += dy;
+          x += sx;
+        }
+        y += sy;
+      }
+    }
+    return pts;
+  }
+
+  /** Single Stix movement tick matching $6703 */
+  stepStix(): void {
+    this.frameCounter = (this.frameCounter + 1) &amp; 0xff;
+
+    if (this.swoopMode) {
+      // $6804..$6853: Advance along precomputed converging paths
+      for (let s = 0; s &lt; this.swoopSpeed; s++) {
+        this.swoopIndex++;
+        const p1 = this.swoopPath1[this.swoopIndex];
+        const p2 = this.swoopPath2[this.swoopIndex];
+        if (!p1 || !p2) {
+          this.swoopMode = false;
+          this.stepStix();
+          return;
+        }
+        const cell = this.idx(p1.x, p1.y);
+        if (this.visible[cell] !== 0 &amp;&amp; this.shadow[cell] !== ShadowState.Stix) {
+          this.swoopMode = false;
+          this.stepStix();
+          return;
+        }
+      }
+      if (this.swoopSpeed === 0) {
+        this.swoopMode = false;
+        this.stepStix();
+        return;
+      }
+      const p1 = this.swoopPath1[this.swoopIndex];
+      const p2 = this.swoopPath2[this.swoopIndex];
+      this.coords[0] = p1.x;
+      this.coords[1] = p2.x;
+      this.coords[2] = p1.y;
+      this.coords[3] = p2.y;
+    } else {
+      // $670D: 16/256 (6.25%) chance to initiate Mode 1 Swoop
+      if (this.randByte() &gt;= 0xf0) {
+        const rx = this.randByte();
+        const ry = this.randByte() ^ this.frameCounter;
+        if (rx &lt; 0x98 &amp;&amp; ry &lt; 0xb3) {
+          const tx = rx + 4;
+          const ty = ry + 17;
+          this.swoopPath1 = this.bresenhamLine(tx, ty, this.coords[0], this.coords[2]).reverse();
+          this.swoopPath2 = this.bresenhamLine(tx, ty, this.coords[1], this.coords[3]).reverse();
+          this.swoopIndex = 0;
+          this.swoopSpeed = this.randByte() &amp; 0x06; // 0, 2, 4, or 6
+          this.swoopMode = true;
+          return;
+        }
+      }
+
+      // $6781..$6801: Mode 0 — Independent Random Walk on Y2, Y1, X2, X1
+      for (let c = 3; c &gt;= 0; c--) {
+        const r = this.randByte();
+        const steps = (r &amp; 0x07) + 1;
+        const dir = (r &amp; 0x80) === 0 ? 1 : -1;
+
+        for (let s = 0; s &lt; steps; s++) {
+          this.coords[c] += dir;
+          if (dir &gt; 0 &amp;&amp; this.coords[c] &gt;= this.maxBounds[c]) {
+            this.coords[c]--;
+            break;
+          }
+          if (dir &lt; 0 &amp;&amp; this.coords[c] &lt; this.minBounds[c]) {
+            this.coords[c]++;
+            break;
+          }
+
+          const ep = c &amp; 1; // 0 for (X1,Y1), 1 for (X2,Y2)
+          const ex = this.coords[ep];
+          const ey = this.coords[ep + 2];
+          const cell = this.idx(ex, ey);
+
+          if (this.visible[cell] !== 0) {
+            if (this.shadow[cell] === ShadowState.Stix) {
+              continue;
+            } else if (this.shadow[cell] === ShadowState.PlayerTrail) {
+              this.playerHit = true;
+              continue;
+            } else {
+              // Blocked by Wall or Filled region: undo step and stop this axis
+              this.coords[c] -= dir;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    this.rasterizeAndClipSegment();
+  }
+
+  /** $6862..$6927: Rasterize candidate segment, erase 8th-oldest trail, clip at walls &amp; snap endpoints */
+  private rasterizeAndClipSegment(): void {
+    const candidate = this.bresenhamLine(
+      this.coords[0],
+      this.coords[2],
+      this.coords[1],
+      this.coords[3]
+    );
+
+    // $6928: Erase oldest segment in current ring slot if still marked as Stix
+    for (const pt of this.trailHistory[this.ringIndex]) {
+      const cell = this.idx(pt.x, pt.y);
+      if (this.shadow[cell] === ShadowState.Stix) {
+        this.visible[cell] = 0;
+        this.shadow[cell] = ShadowState.EmptyOrFilled;
+      }
+    }
+
+    // $688D..$68F5: Walk candidate line, stop on first wall/filled pixel
+    const drawn: Point[] = [];
+    for (const pt of candidate) {
+      const cell = this.idx(pt.x, pt.y);
+      if (this.visible[cell] === 0) {
+        this.visible[cell] = 1;
+        this.shadow[cell] = ShadowState.Stix;
+        drawn.push(pt);
+      } else if (this.shadow[cell] === ShadowState.Stix) {
+        continue;
+      } else if (this.shadow[cell] === ShadowState.PlayerTrail) {
+        this.playerHit = true;
+        continue;
+      } else {
+        // Hit wall or captured area: truncate segment immediately!
+        break;
+      }
+    }
+
+    // $68F7..$6914: Snap (X1,Y1) and (X2,Y2) to first and last drawn pixels
+    if (drawn.length &gt;= 2) {
+      this.coords[0] = drawn[0].x;
+      this.coords[2] = drawn[0].y;
+      const last = drawn[drawn.length - 1];
+      this.coords[1] = last.x;
+      this.coords[3] = last.y;
+    }
+
+    this.trailHistory[this.ringIndex] = drawn;
+    this.ringIndex = (this.ringIndex + 1) &amp; 0x07;
+  }
+}</code></pre>
+
+    <!-- SECTION 7 -->
+    <h2>7. Annotated 6502 Disassembly of Core Stix Routines (<code>$6703–$6927</code>)</h2>
+    <pre><code>; =============================================================================
+; $6703: MAIN STIX MOVEMENT ROUTINE
+; =============================================================================
+$6703: A9 00     LDA #$00
+$6705: 8D 42 4B  STA $4B42       ; Clear Stix-hit-trail flag
+$6708: AD 24 4B  LDA $4B24       ; Check movement mode (0 = Random Walk, 1 = Swoop)
+$670B: D0 6C     BNE $6779       ; If Mode 1 active, jump to $6804 via $6779
+
+; --- Check 6.25% chance to enter Mode 1 (Targeted Swoop) ---
+$670D: AD 1B D4  LDA $D41B       ; Read SID Voice 3 random byte
+$6710: C9 F0     CMP #$F0        ; >= 240? (16/256 = 6.25% probability)
+$6712: 90 6D     BCC $6781       ; Otherwise go to Mode 0 ($6781)
+$6714: A9 01     LDA #$01
+$6716: 8D 24 4B  STA $4B24       ; Enable Mode 1
+$6719: AD 1B D4  LDA $D41B       ; Random X offset
+$671C: C9 98     CMP #$98        ; Must be < 152 (Carry = 0 if < $98)
+$671E: B0 5C     BCS $677C       ; Abort Mode 1 if >= 152
+$6720: 69 04     ADC #$04        ; TX = random(0..151) + 4 -> [4..155]
+$6722: 8D 18 4B  STA $4B18       ; Store TX
+$6725: AD 1B D4  LDA $D41B
+$6728: 4D 25 4B  EOR $4B25       ; XOR with IRQ frame counter
+$672B: C9 B3     CMP #$B3        ; Must be < 179 (Carry = 0 if < $B3)
+$672D: B0 4D     BCS $677C       ; Abort Mode 1 if >= 179
+$672F: 69 11     ADC #$11        ; TY = random(0..178) + 17 -> [17..195]
+$6731: 8D 19 4B  STA $4B19       ; Store TY
+
+; --- Precompute Bresenham trajectories from (X1,Y1) and (X2,Y2) to (TX,TY) ---
+$6734: 85 58     STA $58         ; Y_start = TY
+$6736: AD 18 4B  LDA $4B18
+$6739: 85 57     STA $57         ; X_start = TX
+$673B: AD 12 4B  LDA $4B12
+$673E: 85 59     STA $59         ; X_end = X1
+$6740: AD 14 4B  LDA $4B14
+$6743: 85 5A     STA $5A         ; Y_end = Y1
+$6745: A9 03     LDA #$03
+$6747: 8D 0D 4B  STA $4B0D       ; Mode 3: write line to $4000 (X) / $4200 (Y)
+$674A: 20 8B 69  JSR $698B       ; Compute & reverse path 1 so [0] = (X1,Y1)
+$674D: AD 18 4B  LDA $4B18
+$6750: 85 57     STA $57         ; X_start = TX
+$6752: AD 19 4B  LDA $4B19
+$6755: 85 58     STA $58         ; Y_start = TY
+$6757: AD 13 4B  LDA $4B13
+$675A: 85 59     STA $59         ; X_end = X2
+$675C: AD 15 4B  LDA $4B15
+$675F: 85 5A     STA $5A         ; Y_end = Y2
+$6761: A9 04     LDA #$04
+$6763: 8D 0D 4B  STA $4B0D       ; Mode 4: write line to $4100 (X) / $4300 (Y)
+$6766: 20 CB 69  JSR $69CB       ; Compute & reverse path 2 so [0] = (X2,Y2)
+$6769: A9 00     LDA #$00
+$676B: 8D 28 4B  STA $4B28       ; swoopIndex = 0
+$676E: AD 1B D4  LDA $D41B
+$6771: 29 06     AND #$06
+$6773: 8D 27 4B  STA $4B27       ; swoopSpeed = 0, 2, 4, or 6
+$6776: 4C 7C 6A  JMP $6A7C       ; Trigger swoop sound and RTS
+
+$6779: 4C 04 68  JMP $6804       ; Step active Mode 1 swoop
+$677C: A9 00     LDA #$00
+$677E: 8D 24 4B  STA $4B24       ; Cancel Mode 1
+
+; =============================================================================
+; $6781: MODE 0 — RANDOM ENDPOINT WALK (Y2, Y1, X2, X1)
+; =============================================================================
+$6781: A9 03     LDA #$03
+$6783: 8D 1A 4B  STA $4B1A       ; Coordinate index = 3 (3=Y2, 2=Y1, 1=X2, 0=X1)
+$6786: 20 2D 6A  JSR $6A2D       ; Update ambient Stix sound
+$6789: AD 1B D4  LDA $D41B       ; Pick random byte R for this coordinate
+$678C: 8D 19 4B  STA $4B19       ; Bit 7 = sign (0: +1, 1: -1)
+$678F: 29 07     AND #$07
+$6791: 8D 18 4B  STA $4B18       ; Sub-steps = (R & 7) + 1
+$6794: AE 1A 4B  LDX $4B1A
+$6797: AD 19 4B  LDA $4B19
+$679A: 30 11     BMI $67AD       ; If R >= 128, decrement coordinate
+$679C: FE 12 4B  INC $4B12,X     ; Increment coordinate
+$679F: BD 12 4B  LDA $4B12,X
+$67A2: DD E1 75  CMP $75E1,X     ; Compare against upper bound ($9B, $9B, $C3, $C3)
+$67A5: 90 17     BCC $67BE       ; In bounds -> check bitmap collision
+$67A7: DE 12 4B  DEC $4B12,X     ; Undo increment
+$67AA: 4C FC 67  JMP $67FC       ; Next coordinate
+$67AD: DE 12 4B  DEC $4B12,X     ; Decrement coordinate
+$67B0: BD 12 4B  LDA $4B12,X
+$67B3: DD DD 75  CMP $75DD,X     ; Compare against lower bound ($04, $04, $11, $11)
+$67B6: B0 06     BCS $67BE       ; In bounds -> check bitmap collision
+$67B8: FE 12 4B  INC $4B12,X     ; Undo decrement
+$67BB: 4C FC 67  JMP $67FC       ; Next coordinate
+
+; --- Check bitmap collision at modified endpoint ---
+$67BE: 8A        TXA
+$67BF: 29 01     AND #$01        ; 0 = Endpoint 1 (X1,Y1), 1 = Endpoint 2 (X2,Y2)
+$67C1: AA        TAX
+$67C2: BD 14 4B  LDA $4B14,X     ; Y_ep
+$67C5: A8        TAY
+$67C6: BD 12 4B  LDA $4B12,X     ; X_ep
+$67C9: AA        TAX
+$67CA: 20 BC 6E  JSR $6EBC       ; Read Visible bitmap at (X_ep, Y_ep)
+$67CD: 3D D1 75  AND $75D1,X
+$67D0: F0 12     BEQ $67E4       ; Empty (00) -> step valid
+$67D2: 20 7F 69  JSR $697F       ; Read Shadow bitmap at (X_ep, Y_ep)
+$67D5: DD 7D 75  CMP $757D,X     ; Is it Stix trail (01)?
+$67D8: F0 0A     BEQ $67E4       ; Yes -> step valid
+$67DA: DD 79 75  CMP $7579,X     ; Is it Player's incomplete line (10)?
+$67DD: D0 0C     BNE $67EB       ; No (Wall 11 or Filled 00) -> undo step!
+$67DF: A9 01     LDA #$01
+$67E1: 8D 42 4B  STA $4B42       ; Flag collision with player's incomplete line
+$67E4: CE 18 4B  DEC $4B18       ; Next 1-pixel sub-step
+$67E7: 10 AB     BPL $6794
+$67E9: 30 11     BMI $67FC
+$67EB: AE 1A 4B  LDX $4B1A       ; Blocked by wall/fill: revert 1-pixel step
+$67EE: AD 19 4B  LDA $4B19
+$67F1: 30 06     BMI $67F9
+$67F3: DE 12 4B  DEC $4B12,X
+$67F6: 4C FC 67  JMP $67FC
+$67F9: FE 12 4B  INC $4B12,X
+$67FC: CE 1A 4B  DEC $4B1A       ; Move to next coordinate (3 -> 2 -> 1 -> 0)
+$67FF: 10 88     BPL $6789
+$6801: 4C 62 68  JMP $6862       ; Proceed to rasterize & clip segment</code></pre>
+  </div>
+
+  <!-- INTERACTIVE SIMULATOR SCRIPT -->
+  <script>
+    (function () {
+      const WIDTH = 160;
+      const HEIGHT = 200;
+      const canvas = document.getElementById("stixCanvas");
+      const ctx = canvas.getContext("2d");
+      const imgData = ctx.createImageData(WIDTH, HEIGHT);
+
+      const visible = new Uint8Array(WIDTH * HEIGHT);
+      const shadow = new Uint8Array(WIDTH * HEIGHT);
+
+      let coords = [120, 130, 150, 150]; // [X1, X2, Y1, Y2]
+      const minBounds = [4, 4, 17, 17];
+      const maxBounds = [155, 155, 195, 195];
+
+      let ringIndex = 0;
+      let trailHistory = Array.from({ length: 8 }, () => []);
+
+      let swoopMode = false;
+      let swoopSpeed = 0;
+      let swoopIndex = 0;
+      let swoopTarget = null;
+      let swoopPath1 = [];
+      let swoopPath2 = [];
+      let frameCounter = 0;
+
+      function idx(x, y) {
+        return y * WIDTH + x;
+      }
+
+      function randByte() {
+        return (Math.random() * 256) | 0;
+      }
+
+      function bresenhamLine(x0, y0, x1, y1) {
+        const pts = [];
+        const dx = Math.abs(x1 - x0);
+        const dy = Math.abs(y1 - y0);
+        const sx = x0 < x1 ? 1 : -1;
+        const sy = y0 < y1 ? 1 : -1;
+        let x = x0, y = y0;
+
+        if (dx >= dy) {
+          let err = (dx - (dy >> 1)) >> 1;
+          for (let i = 0; i <= dx; i++) {
+            pts.push({ x, y });
+            err -= dy;
+            if (err < 0) {
+              err += dx;
+              y += sy;
+            }
+            x += sx;
+          }
+        } else {
+          let err = (dy - (dx >> 1)) >> 1;
+          for (let i = 0; i <= dy; i++) {
+            pts.push({ x, y });
+            err -= dx;
+            if (err < 0) {
+              err += dy;
+              x += sx;
+            }
+            y += sy;
+          }
+        }
+        return pts;
+      }
+
+      function drawWallLine(x0, y0, x1, y1) {
+        for (const p of bresenhamLine(x0, y0, x1, y1)) {
+          if (p.x >= 0 && p.x < WIDTH && p.y >= 0 && p.y < HEIGHT) {
+            visible[idx(p.x, p.y)] = 3;
+            shadow[idx(p.x, p.y)] = 3;
+          }
+        }
+      }
+
+      function resetPlayfield() {
+        visible.fill(0);
+        shadow.fill(0);
+        // Outer boundary (X = 3..156, Y = 16..196)
+        drawWallLine(3, 16, 156, 16);
+        drawWallLine(3, 196, 156, 196);
+        drawWallLine(3, 16, 3, 196);
+        drawWallLine(156, 16, 156, 196);
+
+        coords = [120, 130, 150, 150];
+        ringIndex = 0;
+        trailHistory = Array.from({ length: 8 }, () => []);
+        swoopMode = false;
+        swoopTarget = null;
+      }
+
+      function startSwoop() {
+        const rx = randByte() % 0x98;
+        const ry = (randByte() ^ frameCounter) % 0xb3;
+        const tx = rx + 4;
+        const ty = ry + 17;
+        swoopTarget = { x: tx, y: ty };
+        swoopPath1 = bresenhamLine(tx, ty, coords[0], coords[2]).reverse();
+        swoopPath2 = bresenhamLine(tx, ty, coords[1], coords[3]).reverse();
+        swoopIndex = 0;
+        swoopSpeed = [2, 4, 6][(Math.random() * 3) | 0];
+        swoopMode = true;
+      }
+
+      function stepStix() {
+        frameCounter = (frameCounter + 1) & 0xff;
+
+        if (swoopMode) {
+          for (let s = 0; s < swoopSpeed; s++) {
+            swoopIndex++;
+            const p1 = swoopPath1[swoopIndex];
+            const p2 = swoopPath2[swoopIndex];
+            if (!p1 || !p2) {
+              swoopMode = false;
+              swoopTarget = null;
+              stepStix();
+              return;
+            }
+            const cell = idx(p1.x, p1.y);
+            if (visible[cell] !== 0 && shadow[cell] !== 1) {
+              swoopMode = false;
+              swoopTarget = null;
+              stepStix();
+              return;
+            }
+          }
+          if (swoopSpeed === 0) {
+            swoopMode = false;
+            swoopTarget = null;
+            stepStix();
+            return;
+          }
+          const p1 = swoopPath1[swoopIndex];
+          const p2 = swoopPath2[swoopIndex];
+          coords[0] = p1.x;
+          coords[1] = p2.x;
+          coords[2] = p1.y;
+          coords[3] = p2.y;
+        } else {
+          if (randByte() >= 0xf0) {
+            const rx = randByte();
+            const ry = randByte() ^ frameCounter;
+            if (rx < 0x98 && ry < 0xb3) {
+              const tx = rx + 4;
+              const ty = ry + 17;
+              swoopTarget = { x: tx, y: ty };
+              swoopPath1 = bresenhamLine(tx, ty, coords[0], coords[2]).reverse();
+              swoopPath2 = bresenhamLine(tx, ty, coords[1], coords[3]).reverse();
+              swoopIndex = 0;
+              swoopSpeed = randByte() & 0x06;
+              swoopMode = true;
+              return;
+            }
+          }
+
+          for (let c = 3; c >= 0; c--) {
+            const r = randByte();
+            const steps = (r & 0x07) + 1;
+            const dir = (r & 0x80) === 0 ? 1 : -1;
+
+            for (let s = 0; s < steps; s++) {
+              coords[c] += dir;
+              if (dir > 0 && coords[c] >= maxBounds[c]) {
+                coords[c]--;
+                break;
+              }
+              if (dir < 0 && coords[c] < minBounds[c]) {
+                coords[c]++;
+                break;
+              }
+              const ep = c & 1;
+              const ex = coords[ep];
+              const ey = coords[ep + 2];
+              const cell = idx(ex, ey);
+              if (visible[cell] !== 0 && shadow[cell] !== 1) {
+                coords[c] -= dir;
+                break;
+              }
+            }
+          }
+        }
+
+        // Rasterize and clip ($6862)
+        const candidate = bresenhamLine(coords[0], coords[2], coords[1], coords[3]);
+
+        // Erase oldest trail segment ($6928)
+        for (const pt of trailHistory[ringIndex]) {
+          const cell = idx(pt.x, pt.y);
+          if (shadow[cell] === 1) {
+            visible[cell] = 0;
+            shadow[cell] = 0;
+          }
+        }
+
+        const drawn = [];
+        for (const pt of candidate) {
+          const cell = idx(pt.x, pt.y);
+          if (visible[cell] === 0) {
+            visible[cell] = 1;
+            shadow[cell] = 1;
+            drawn.push(pt);
+          } else if (shadow[cell] === 1) {
+            continue;
+          } else {
+            break;
+          }
+        }
+
+        if (drawn.length >= 2) {
+          coords[0] = drawn[0].x;
+          coords[2] = drawn[0].y;
+          const last = drawn[drawn.length - 1];
+          coords[1] = last.x;
+          coords[3] = last.y;
+        }
+
+        trailHistory[ringIndex] = drawn;
+        ringIndex = (ringIndex + 1) & 0x07;
+      }
+
+      function render() {
+        const data = imgData.data;
+        for (let i = 0; i < WIDTH * HEIGHT; i++) {
+          const p = i * 4;
+          const v = visible[i];
+          if (v === 0) {
+            data[p] = 10; data[p + 1] = 12; data[p + 2] = 20; data[p + 3] = 255;
+          } else if (v === 1) {
+            // Stix pixel
+            data[p] = swoopMode ? 248 : 74;
+            data[p + 1] = swoopMode ? 113 : 222;
+            data[p + 2] = swoopMode ? 113 : 128;
+            data[p + 3] = 255;
+          } else {
+            // Wall pixel
+            data[p] = 56; data[p + 1] = 189; data[p + 2] = 248; data[p + 3] = 255;
+          }
+        }
+        ctx.putImageData(imgData, 0, 0);
+
+        const badge = document.getElementById("modeBadge");
+        if (swoopMode) {
+          badge.className = "badge badge-mode1";
+          badge.textContent = "Mode 1: Targeted Swoop (Speed " + swoopSpeed + ")";
+        } else {
+          badge.className = "badge badge-mode0";
+          badge.textContent = "Mode 0: Random Endpoint Walk";
+        }
+        document.getElementById("statEp1").textContent = "X1: " + coords[0] + ", Y1: " + coords[2];
+        document.getElementById("statEp2").textContent = "X2: " + coords[1] + ", Y2: " + coords[3];
+        document.getElementById("statRing").textContent = ringIndex + " / 7";
+        document.getElementById("statTarget").textContent = swoopTarget
+          ? "TX: " + swoopTarget.x + ", TY: " + swoopTarget.y
+          : "—";
+      }
+
+      resetPlayfield();
+
+      document.getElementById("btnForceSwoop").addEventListener("click", startSwoop);
+      document.getElementById("btnReset").addEventListener("click", resetPlayfield);
+      document.getElementById("btnAddBox").addEventListener("click", function () {
+        drawWallLine(35, 50, 125, 50);
+        drawWallLine(35, 165, 125, 165);
+        drawWallLine(35, 50, 35, 165);
+        drawWallLine(125, 50, 125, 165);
+        coords = [80, 90, 105, 105];
+      });
+
+      let dragging = false;
+      let lastPt = null;
+      function getCanvasPt(e) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: Math.max(4, Math.min(155, Math.floor(((e.clientX - rect.left) / rect.width) * WIDTH))),
+          y: Math.max(17, Math.min(195, Math.floor(((e.clientY - rect.top) / rect.height) * HEIGHT)))
+        };
+      }
+      canvas.addEventListener("mousedown", (e) => {
+        dragging = true;
+        lastPt = getCanvasPt(e);
+        drawWallLine(lastPt.x, lastPt.y, lastPt.x, lastPt.y);
+      });
+      window.addEventListener("mousemove", (e) => {
+        if (!dragging) return;
+        const pt = getCanvasPt(e);
+        drawWallLine(lastPt.x, lastPt.y, pt.x, pt.y);
+        lastPt = pt;
+      });
+      window.addEventListener("mouseup", () => { dragging = false; });
+
+      setInterval(() => {
+        stepStix();
+        render();
+      }, 45);
+    })();
+  </script>
+</body>
+</html>
+

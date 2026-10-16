@@ -1443,6 +1443,12 @@
     gap: 0.5rem;
   }
 
+  @media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
+    .footer-bar {
+      display: none;
+    }
+  }
+
   kbd {
     background: #1e293b;
     color: #cbd5e1;

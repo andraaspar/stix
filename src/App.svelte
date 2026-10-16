@@ -18,7 +18,6 @@
   let dimension = $state(1);
   let themeName = $state(engine.getTheme().name);
   let capturedPercent = $state(0);
-  let energy = $state(100);
   let status = $state<'playing' | 'dying' | 'life_lost' | 'dimension_complete' | 'game_over'>('playing');
   let paused = $state(false);
   let statusMessage = $state('');
@@ -66,7 +65,6 @@
     dimension = engine.dimension;
     themeName = engine.getTheme().name;
     capturedPercent = engine.capturedPercent;
-    energy = engine.energy;
     status = engine.status;
     paused = engine.paused;
     statusMessage = engine.statusMessage;
@@ -433,7 +431,7 @@
 
         ctx.save();
         ctx.translate(qx, qy);
-        ctx.rotate((now * 0.008) * (q.anti ? -1 : 1));
+        ctx.rotate((now * 0.008) * (q.anti ? 1 : -1));
         ctx.strokeStyle = q.anti ? '#f43f5e' : '#38bdf8';
         ctx.fillStyle = '#ffffff';
         ctx.shadowColor = q.anti ? '#f43f5e' : '#38bdf8';
@@ -601,6 +599,23 @@
 
       ctx.restore();
     } else {
+      // Faint energy arc around the synthesiser: full ring at 100%, shrinking symmetrically
+      // from the top so the remaining arc is anchored at the bottom.
+      const energyFrac = Math.max(0, Math.min(1, engine.energy / 100));
+      if (energyFrac > 0) {
+        const halfSpan = energyFrac * Math.PI;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = engine.energy < 25 ? '#f87171' : theme.wallStroke;
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(0, 0, pr * 1.9, Math.PI / 2 - halfSpan, Math.PI / 2 + halfSpan);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       const blink = engine.invulnerableFrames > 0 && Math.floor(engine.invulnerableFrames / 3) % 2 === 1;
 
       if (!blink) {
@@ -855,7 +870,7 @@
         <span class="metric-value muted">{String(highScore).padStart(6, '0')}</span>
       </div>
 
-      <div class="metric-card wide">
+      <div class="metric-card wide captured-card">
         <div class="bar-header">
           <span class="metric-label">CAPTURED</span>
           <span class="metric-value small">{capturedPercent}% <span class="target">/ 75%</span></span>
@@ -864,20 +879,6 @@
           <div
             class="progress-fill"
             style="width: {Math.min(100, (capturedPercent / 75) * 100)}%"
-          ></div>
-        </div>
-      </div>
-
-      <div class="metric-card wide">
-        <div class="bar-header">
-          <span class="metric-label">ENERGY</span>
-          <span class="metric-value small" class:danger={energy < 25}>{energy}%</span>
-        </div>
-        <div class="progress-track">
-          <div
-            class="progress-fill energy"
-            class:danger-fill={energy < 25}
-            style="width: {energy}%"
           ></div>
         </div>
       </div>
@@ -922,9 +923,6 @@
       </button>
       <button class="btn-icon" onclick={() => (showHelp = !showHelp)} title="Instructions">
         ?
-      </button>
-      <button class="btn-reset" onclick={() => engine.startNewGame(getAspectRatio(), viewW, viewH)}>
-        New Game
       </button>
     </div>
   </header>
@@ -1034,7 +1032,7 @@
     {/if}
 
     {#if showHelp}
-      <div class="overlay">
+      <div class="overlay fullscreen">
         <div class="modal help-modal">
           <h2>How to Play STIX</h2>
           <ul>
@@ -1185,10 +1183,6 @@
     font-size: 0.82rem;
   }
 
-  .metric-value.danger {
-    color: #f87171;
-  }
-
   .target {
     color: #64748b;
     font-weight: 500;
@@ -1207,14 +1201,6 @@
     height: 100%;
     background: linear-gradient(90deg, #38bdf8, #4ade80);
     transition: width 0.15s ease-out;
-  }
-
-  .progress-fill.energy {
-    background: linear-gradient(90deg, #a78bfa, #38bdf8);
-  }
-
-  .progress-fill.danger-fill {
-    background: #ef4444;
   }
 
   .lives-row {
@@ -1271,10 +1257,6 @@
 
   .btn-icon {
     padding: 0.4rem 0.55rem;
-  }
-
-  .btn-reset {
-    background: #1e293b;
   }
 
   .drawer {
@@ -1364,6 +1346,11 @@
     z-index: 20;
   }
 
+  .overlay.fullscreen {
+    position: fixed;
+    z-index: 100;
+  }
+
   .modal {
     background: #121726;
     border: 1px solid #2e3b5e;
@@ -1385,6 +1372,9 @@
 
   .modal.help-modal {
     max-width: 580px;
+    max-height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
     text-align: left;
   }
 
@@ -1444,7 +1434,8 @@
   }
 
   @media (max-width: 768px), (orientation: landscape) and (max-height: 500px) {
-    .footer-bar {
+    .footer-bar,
+    .captured-card {
       display: none;
     }
   }

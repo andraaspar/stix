@@ -911,6 +911,10 @@ export class StixGameEngine {
         Math.abs(q.x - this.playerX) <= 1 &&
         Math.abs(q.y - this.playerY) <= 1
       ) {
+        // Respawn at the grid intersection the synthesiser was just leaving
+        const departed = this.getDepartedGridIntersection();
+        this.launchX = departed.x;
+        this.launchY = departed.y;
         this.killPlayer(
           q.anti
             ? 'An Anti-Quark collided with your field synthesiser!'
@@ -919,6 +923,30 @@ export class StixGameEngine {
         return;
       }
     }
+  }
+
+  /**
+   * Returns the grid intersection the synthesiser most recently departed from.
+   * If it is currently on an intersection, that intersection is returned; otherwise
+   * the position is snapped backwards along the current movement direction.
+   */
+  private getDepartedGridIntersection(): Point {
+    const x = this.playerX;
+    const y = this.playerY;
+    if (this.isOnGridIntersection(x, y)) return { x, y };
+
+    const step = this.gridStep;
+    const dx = this.activeMove?.dx ?? Math.sign(this.playerX - this.playerPrevX);
+    const dy = this.activeMove?.dy ?? Math.sign(this.playerY - this.playerPrevY);
+    const snap = (v: number, d: number): number => {
+      const offset = (((v - 1) % step) + step) % step;
+      if (offset === 0) return v;
+      if (d > 0) return v - offset;
+      if (d < 0) return v + (step - offset);
+      // Unknown direction: snap to nearest grid line
+      return offset < step / 2 ? v - offset : v + (step - offset);
+    };
+    return { x: snap(x, dx), y: snap(y, dy) };
   }
 
   private isOpenInterior(x: number, y: number): boolean {

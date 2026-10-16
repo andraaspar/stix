@@ -1073,9 +1073,6 @@
     <span>
       <strong>Controls:</strong> Arrow Keys / WASD (Hold <kbd>Shift</kbd> for 20× Slow Draw, <kbd>Esc</kbd> Pause) &middot; or Click/Touch &amp; Drag
     </span>
-    <a href="/stix-algorithm.html" target="_blank" rel="noopener">
-      View C64 Disassembly &amp; Algorithm Docs &nearr;
-    </a>
   </footer>
 </div>
 
@@ -1444,15 +1441,6 @@
     color: #64748b;
     flex-wrap: wrap;
     gap: 0.5rem;
-  }
-
-  .footer-bar a {
-    color: #38bdf8;
-    text-decoration: none;
-  }
-
-  .footer-bar a:hover {
-    text-decoration: underline;
   }
 
   kbd {

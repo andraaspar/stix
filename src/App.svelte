@@ -159,10 +159,13 @@
     const gw = engine.gridW;
     const gh = engine.gridH;
     const theme = engine.getTheme();
-    const scaleX = viewW / gw;
-    const scaleY = viewH / gh;
-    const toScreenX = (gx: number) => (gx + 0.5) * scaleX;
-    const toScreenY = (gy: number) => (gy + 0.5) * scaleY;
+    const pad = 10;
+    const drawW = Math.max(1, viewW - pad * 2);
+    const drawH = Math.max(1, viewH - pad * 2);
+    const scaleX = drawW / gw;
+    const scaleY = drawH / gh;
+    const toScreenX = (gx: number) => pad + (gx + 0.5) * scaleX;
+    const toScreenY = (gy: number) => pad + (gy + 0.5) * scaleY;
 
     sctx.save();
     sctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -206,7 +209,7 @@
       territoryCtx.putImageData(territoryImgData, 0, 0);
       sctx.save();
       sctx.imageSmoothingEnabled = true;
-      sctx.drawImage(territoryCanvas!, 0, 0, viewW, viewH);
+      sctx.drawImage(territoryCanvas!, pad, pad, drawW, drawH);
       sctx.restore();
     }
 
@@ -308,10 +311,13 @@
       ctx.drawImage(staticCanvas, 0, 0, viewW, viewH);
     }
 
-    const scaleX = viewW / gw;
-    const scaleY = viewH / gh;
-    const toScreenX = (gx: number) => (gx + 0.5) * scaleX;
-    const toScreenY = (gy: number) => (gy + 0.5) * scaleY;
+    const pad = 10;
+    const drawW = Math.max(1, viewW - pad * 2);
+    const drawH = Math.max(1, viewH - pad * 2);
+    const scaleX = drawW / gw;
+    const scaleY = drawH / gh;
+    const toScreenX = (gx: number) => pad + (gx + 0.5) * scaleX;
+    const toScreenY = (gy: number) => pad + (gy + 0.5) * scaleY;
     const playerPos = engine.getRenderPlayerPos(frameAlpha);
     const isDying = engine.status === 'dying';
     const deathProgress = isDying ? engine.getDeathProgress(frameAlpha) : 0;
@@ -454,39 +460,7 @@
       }
     }
 
-    // 8. Pointer direction guide line (when pointer control is active)
-    if (engine.pointerActive && engine.pointerTarget) {
-      const px = toScreenX(playerPos.x);
-      const py = toScreenY(playerPos.y);
-      const tx = toScreenX(engine.pointerTarget.x);
-      const ty = toScreenY(engine.pointerTarget.y);
-      const dx = engine.pointerTarget.x - playerPos.x;
-      const dy = engine.pointerTarget.y - playerPos.y;
-
-      ctx.save();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(px, py);
-      // Show the instantaneous horizontal or vertical leg chosen by the algorithm
-      if (Math.abs(dx) >= Math.abs(dy)) {
-        ctx.lineTo(tx, py);
-      } else {
-        ctx.lineTo(px, ty);
-      }
-      ctx.stroke();
-
-      // Pointer target ring
-      ctx.setLineDash([]);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-      ctx.beginPath();
-      ctx.arc(tx, ty, 5, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 9. Draw Player ("Field Synthesiser") diamond cursor or 1s Death Animation
+    // 8. Draw Player ("Field Synthesiser") diamond cursor or 1s Death Animation
     const px = toScreenX(playerPos.x);
     const py = toScreenY(playerPos.y);
     const pr = Math.max(5.5, Math.min(scaleX, scaleY) * 1.45);
@@ -677,35 +651,55 @@
     rafId = requestAnimationFrame(loop);
   }
 
-  // Pointer Events: convert client coordinates to logical grid coordinates
-  function updatePointerLocation(e: PointerEvent): void {
-    if (!canvasEl) return;
-    const rect = canvasEl.getBoundingClientRect();
-    const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
-    engine.pointerTarget = {
-      x: Math.max(1, Math.min(engine.gridW - 2, normX * engine.gridW - 0.5)),
-      y: Math.max(1, Math.min(engine.gridH - 2, normY * engine.gridH - 0.5)),
-    };
-  }
+  // Device Orientation (Tilt Controls)
+  let tiltPermissionHandled = false;
 
-  function onPointerDown(e: PointerEvent): void {
-    if (engine.status !== 'playing' || engine.paused) return;
-    canvasEl.setPointerCapture(e.pointerId);
-    engine.pointerActive = true;
-    updatePointerLocation(e);
-  }
+  function onDeviceOrientation(e: DeviceOrientationEvent): void {
+    if (e.beta === null || e.gamma === null) return;
+    const beta = Math.max(-90, Math.min(90, e.beta));
+    const gamma = Math.max(-90, Math.min(90, e.gamma));
 
-  function onPointerMove(e: PointerEvent): void {
-    if (!engine.pointerActive) return;
-    updatePointerLocation(e);
-  }
+    const angle =
+      window.screen?.orientation?.angle ??
+      (typeof (window as unknown as { orientation?: number }).orientation === 'number'
+        ? (window as unknown as { orientation: number }).orientation
+        : 0);
 
-  function onPointerUp(e: PointerEvent): void {
-    if (canvasEl && canvasEl.hasPointerCapture(e.pointerId)) {
-      canvasEl.releasePointerCapture(e.pointerId);
+    let tx = gamma;
+    let ty = beta;
+    if (angle === 90) {
+      tx = beta;
+      ty = -gamma;
+    } else if (angle === -90 || angle === 270) {
+      tx = -beta;
+      ty = gamma;
+    } else if (angle === 180) {
+      tx = -gamma;
+      ty = -beta;
     }
-    engine.pointerActive = false;
+
+    engine.setTilt(tx, ty);
+  }
+
+  function requestTiltPermissionIfNeeded(): void {
+    if (tiltPermissionHandled) return;
+    const DOE = window.DeviceOrientationEvent as unknown as {
+      requestPermission?: () => Promise<'granted' | 'denied'>;
+    };
+    if (DOE && typeof DOE.requestPermission === 'function') {
+      tiltPermissionHandled = true;
+      DOE.requestPermission()
+        .then((state) => {
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', onDeviceOrientation);
+          }
+        })
+        .catch(() => {
+          tiltPermissionHandled = false;
+        });
+    } else {
+      tiltPermissionHandled = true;
+    }
   }
 
   function togglePause(): void {
@@ -833,8 +827,12 @@
     });
     if (stageEl) resizeObserver.observe(stageEl);
 
+    window.addEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('resize', handleResize);
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('deviceorientation', onDeviceOrientation);
+    window.addEventListener('pointerdown', requestTiltPermissionIfNeeded);
     window.addEventListener('blur', onWindowBlur);
     document.addEventListener('visibilitychange', onVisibilityChange);
     rafId = requestAnimationFrame(loop);
@@ -843,8 +841,12 @@
   onDestroy(() => {
     if (rafId) cancelAnimationFrame(rafId);
     if (resizeObserver) resizeObserver.disconnect();
+    window.removeEventListener('resize', handleResize);
+    window.visualViewport?.removeEventListener('resize', handleResize);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('deviceorientation', onDeviceOrientation);
+    window.removeEventListener('pointerdown', requestTiltPermissionIfNeeded);
     window.removeEventListener('blur', onWindowBlur);
     document.removeEventListener('visibilitychange', onVisibilityChange);
     engine.sound.stopFuse();
@@ -957,13 +959,7 @@
 
   <!-- ADAPTIVE GAME STAGE -->
   <main class="stage-container" bind:this={stageEl}>
-    <canvas
-      bind:this={canvasEl}
-      onpointerdown={onPointerDown}
-      onpointermove={onPointerMove}
-      onpointerup={onPointerUp}
-      onpointercancel={onPointerUp}
-    ></canvas>
+    <canvas bind:this={canvasEl}></canvas>
 
     <!-- STATUS PILL OVERLAY -->
     <div class="corner-status">
@@ -1049,8 +1045,8 @@
               <strong>2 pts per 1%</strong> at fast speed). Press <strong>Esc</strong> to pause/resume.
             </li>
             <li>
-              <strong>Pointer / Touch Controls:</strong> Press and drag anywhere on the playfield. The
-              synthesiser moves strictly along grid lines toward your pointer at the authentic capped speed.
+              <strong>Tilt Controls:</strong> Tilt your device in any direction to send the synthesiser
+              along the grid lines in that direction.
             </li>
             <li>
               <strong>Hazards:</strong>
@@ -1069,13 +1065,13 @@
 
   <footer class="footer-bar">
     <span>
-      <strong>Controls:</strong> Arrow Keys / WASD (Hold <kbd>Shift</kbd> for 20× Slow Draw, <kbd>Esc</kbd> Pause) &middot; or Click/Touch &amp; Drag
+      <strong>Controls:</strong> Arrow Keys / WASD (Hold <kbd>Shift</kbd> for 20× Slow Draw, <kbd>Esc</kbd> Pause) &middot; or Tilt Device
     </span>
   </footer>
 </div>
 
 <style>
-  :global(html, body) {
+  :global(html, body, #app) {
     margin: 0;
     padding: 0;
     width: 100%;
@@ -1091,8 +1087,11 @@
   .app-shell {
     display: flex;
     flex-direction: column;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .hud-bar {
@@ -1289,6 +1288,8 @@
   .stage-container {
     position: relative;
     flex: 1;
+    min-height: 0;
+    min-width: 0;
     width: 100%;
     overflow: hidden;
     display: flex;
@@ -1298,11 +1299,12 @@
   }
 
   canvas {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     display: block;
     touch-action: none;
-    cursor: crosshair;
   }
 
   .corner-status {

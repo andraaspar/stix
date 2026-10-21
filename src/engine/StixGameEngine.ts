@@ -220,8 +220,9 @@ export class StixGameEngine {
     slow: false, // Shift
     fast: false, // Space
   };
-  public pointerActive = false;
-  public pointerTarget: Point | null = null;
+  public tiltX = 0;
+  public tiltY = 0;
+  public readonly tiltDeadzone = 7;
 
   public sound = new SoundEngine();
 
@@ -264,7 +265,8 @@ export class StixGameEngine {
       this.pendingKeyMove = null;
       this.lastDirectionPressed = null;
       this.holdFrames = 0;
-      this.pointerActive = false;
+      this.tiltX = 0;
+      this.tiltY = 0;
       this.sound.stopFuse();
     } else {
       if (!this.paused) return;
@@ -529,7 +531,7 @@ export class StixGameEngine {
       this.holdFrames = 0;
     }
 
-    // 1. Step Player movement (Keyboard or Pointer)
+    // 1. Step Player movement (Keyboard or Tilt)
     this.stepPlayer();
     if (this.status !== 'playing') return;
 
@@ -567,6 +569,12 @@ export class StixGameEngine {
       this.stepStix();
       if (this.status !== 'playing') return;
     }
+  }
+
+  public setTilt(tiltX: number, tiltY: number): void {
+    if (this.paused || this.status !== 'playing') return;
+    this.tiltX = tiltX;
+    this.tiltY = tiltY;
   }
 
   /**
@@ -614,29 +622,23 @@ export class StixGameEngine {
       return candidates;
     }
 
-    // 3. Pointer input: compare location of synthesizer vs pointer target at grid intersections
-    if (this.pointerActive && this.pointerTarget) {
-      const diffX = this.pointerTarget.x - this.playerX;
-      const diffY = this.pointerTarget.y - this.playerY;
-      const deadzone = this.gridStep * 0.5;
-
-      if (Math.abs(diffX) < deadzone && Math.abs(diffY) < deadzone) {
-        return [];
-      }
-
-      if (Math.abs(diffX) >= Math.abs(diffY)) {
-        if (Math.abs(diffX) >= deadzone) {
-          pushUnique(Math.sign(diffX), 0, true);
+    // 3. Device tilt input: send synthesizer in the tilted direction when past deadzone
+    const absX = Math.abs(this.tiltX);
+    const absY = Math.abs(this.tiltY);
+    if (absX >= this.tiltDeadzone || absY >= this.tiltDeadzone) {
+      if (absX >= absY) {
+        if (absX >= this.tiltDeadzone) {
+          pushUnique(Math.sign(this.tiltX), 0, true);
         }
-        if (Math.abs(diffY) >= deadzone) {
-          pushUnique(0, Math.sign(diffY), true);
+        if (absY >= this.tiltDeadzone) {
+          pushUnique(0, Math.sign(this.tiltY), true);
         }
       } else {
-        if (Math.abs(diffY) >= deadzone) {
-          pushUnique(0, Math.sign(diffY), true);
+        if (absY >= this.tiltDeadzone) {
+          pushUnique(0, Math.sign(this.tiltY), true);
         }
-        if (Math.abs(diffX) >= deadzone) {
-          pushUnique(Math.sign(diffX), 0, true);
+        if (absX >= this.tiltDeadzone) {
+          pushUnique(Math.sign(this.tiltX), 0, true);
         }
       }
       return candidates;
@@ -1370,7 +1372,6 @@ export class StixGameEngine {
 
     this.sound.playExplosion();
     this.paused = false;
-    this.pointerActive = false;
     this.activeMove = null;
     this.pendingKeyMove = null;
     this.holdFrames = 0;

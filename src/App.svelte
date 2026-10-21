@@ -1438,6 +1438,20 @@
     .captured-card {
       display: none;
     }
+
+    .hud-bar {
+      gap: 0.45rem;
+      padding: 0.4rem 0.65rem;
+    }
+
+    .brand,
+    .metrics {
+      gap: 0.4rem;
+    }
+
+    .actions {
+      gap: 0.3rem;
+    }
   }
 
   kbd {

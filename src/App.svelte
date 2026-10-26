@@ -989,16 +989,6 @@
   <main class="stage-container" bind:this={stageEl}>
     <canvas bind:this={canvasEl}></canvas>
 
-    <!-- STATUS PILL OVERLAY -->
-    <div class="corner-status">
-      {#if swoopMode}
-        <span class="status-badge swoop">STIX SWOOPING</span>
-      {/if}
-      {#if fuseActive}
-        <span class="status-badge fuse">STABILISER RIPPLE!</span>
-      {/if}
-    </div>
-
     <!-- MODAL OVERLAYS (HTML) -->
     {#if status === 'life_lost'}
       <div class="overlay">
@@ -1333,35 +1323,6 @@
     height: 100%;
     display: block;
     touch-action: none;
-  }
-
-  .corner-status {
-    position: absolute;
-    top: 0.75rem;
-    left: 1rem;
-    display: flex;
-    gap: 0.5rem;
-    pointer-events: none;
-  }
-
-  .status-badge {
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    padding: 0.25rem 0.6rem;
-    border-radius: 4px;
-  }
-
-  .status-badge.swoop {
-    background: rgba(244, 63, 94, 0.2);
-    color: #fda4af;
-    border: 1px solid rgba(244, 63, 94, 0.5);
-  }
-
-  .status-badge.fuse {
-    background: rgba(239, 68, 68, 0.25);
-    color: #fef08a;
-    border: 1px solid #ef4444;
   }
 
   .overlay {

@@ -654,10 +654,35 @@
   // Device Orientation (Tilt Controls)
   let tiltPermissionHandled = false;
 
+  // Timestamp of the last deviceorientation event that carried usable beta/gamma values.
+  // Some browsers (notably Firefox on Android) may never fire deviceorientation, or only
+  // fire it with null values, on devices where the fused rotation sensor is unavailable.
+  // In that case we fall back to deriving tilt from devicemotion's gravity vector.
+  let lastOrientationAt = 0;
+  const ORIENTATION_STALE_MS = 500;
+
   function onDeviceOrientation(e: DeviceOrientationEvent): void {
     if (e.beta === null || e.gamma === null) return;
-    const beta = Math.max(-90, Math.min(90, e.beta));
-    const gamma = Math.max(-90, Math.min(90, e.gamma));
+    lastOrientationAt = performance.now();
+    applyTilt(e.beta, e.gamma);
+  }
+
+  function onDeviceMotion(e: DeviceMotionEvent): void {
+    // Prefer deviceorientation whenever it is delivering data.
+    if (performance.now() - lastOrientationAt < ORIENTATION_STALE_MS) return;
+    const g = e.accelerationIncludingGravity;
+    if (!g || g.x === null || g.y === null || g.z === null) return;
+    // Per spec, a device lying flat face-up reports {0, 0, +9.81}; held upright, y = +9.81.
+    // Convert the gravity vector to approximate beta (front-back) and gamma (left-right) tilt.
+    const toDeg = 180 / Math.PI;
+    const beta = Math.atan2(g.y, Math.hypot(g.x, g.z)) * toDeg;
+    const gamma = Math.atan2(-g.x, Math.hypot(g.y, g.z)) * toDeg;
+    applyTilt(beta, gamma);
+  }
+
+  function applyTilt(rawBeta: number, rawGamma: number): void {
+    const beta = Math.max(-90, Math.min(90, rawBeta));
+    const gamma = Math.max(-90, Math.min(90, rawGamma));
 
     const angle =
       window.screen?.orientation?.angle ??
@@ -692,6 +717,7 @@
         .then((state) => {
           if (state === 'granted') {
             window.addEventListener('deviceorientation', onDeviceOrientation);
+            window.addEventListener('devicemotion', onDeviceMotion);
           }
         })
         .catch(() => {
@@ -832,6 +858,7 @@
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('deviceorientation', onDeviceOrientation);
+    window.addEventListener('devicemotion', onDeviceMotion);
     window.addEventListener('pointerdown', requestTiltPermissionIfNeeded);
     window.addEventListener('blur', onWindowBlur);
     document.addEventListener('visibilitychange', onVisibilityChange);
@@ -846,6 +873,7 @@
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('deviceorientation', onDeviceOrientation);
+    window.removeEventListener('devicemotion', onDeviceMotion);
     window.removeEventListener('pointerdown', requestTiltPermissionIfNeeded);
     window.removeEventListener('blur', onWindowBlur);
     document.removeEventListener('visibilitychange', onVisibilityChange);
